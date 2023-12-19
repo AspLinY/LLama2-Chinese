@@ -218,7 +218,8 @@ class DataTrainingArguments:  # 用于封装和管理与训练和评估模型相
     )
     preprocessing_num_workers: Optional[int] = field(  # 指定用于预处理的进程数。
         default=None,
-        metadata={"help": "数据预处理是机器学习工作流程中的一个重要步骤，它包括清洗数据、转换数据格式、令牌化（tokenization）等操作。通过设置多个进程，可以加速这些操作的执行，特别是在处理大量数据时。"},
+        metadata={
+            "help": "数据预处理是机器学习工作流程中的一个重要步骤，它包括清洗数据、转换数据格式、令牌化（tokenization）等操作。通过设置多个进程，可以加速这些操作的执行，特别是在处理大量数据时。"},
     )
     keep_linebreaks: bool = field(  # 指定在使用TXT文件时是否保留换行符。
         default=True, metadata={"help": "决定在处理文本文件（TXT文件）时是否保留换行符。"}
@@ -246,18 +247,18 @@ def main():
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
+    # ModelArguments（模型相关的参数），DataTrainingArguments（数据训练相关的参数），以及 TrainingArguments（训练过程相关的参数）。
+
+    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):  # 检查是否只传入了一个参数，并且这个参数是一个 .json 文件的路径
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+        # 解析这个JSON文件以获取参数
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        # 解析后的参数分别被赋值给 model_args, data_args, training_args 这三个变量，它们分别存储了与模型相关、数据训练相关和训练过程相关的参数。
 
-    # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
-    # information sent is the one passed as arguments along with your Python/PyTorch versions.
-    send_example_telemetry("run_clm", model_args, data_args)
+    send_example_telemetry("run_clm", model_args, data_args)  # 这行代码发送遥测数据，用于跟踪脚本的使用情况。
 
-    # Setup logging
+    # 设置日志
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -285,39 +286,40 @@ def main():
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-            raise ValueError(
+        # 检查是否存在输出目录（output_dir），是否计划进行训练（do_train），并且是否没有设置覆盖输出目录（overwrite_output_dir）的标志。
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)  # 尝试获取最后的检查点。
+        if last_checkpoint is None and len(
+                os.listdir(training_args.output_dir)) > 0:  # 如果 last_checkpoint 为 None 并且输出目录不为空
+            raise ValueError(  # 则抛出一个错误
                 f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                 "Use --overwrite_output_dir to overcome."
-            )
-        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+            )  # 这是为了避免无意中覆盖已有的训练结果。
+        elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:  # 如果找到了检查点且没有指定从特定检查点恢复
             logger.info(
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+            )  # 则记录一条信息，说明将从检测到的检查点恢复训练。
 
     # Set seed before initializing model.
-    set_seed(training_args.seed)
+    set_seed(training_args.seed)  # 确保模型初始化和后续的随机过程（如数据洗牌）在不同运行之间保持一致。
 
-    # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
-    # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
-    # (the dataset will be downloaded automatically from the datasets Hub).
-    #
-    # For CSV/JSON files, this script will use the column called 'text' or the first column if no column called
-    # 'text' is found. You can easily tweak this behavior (see below).
-    #
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
+    # 用户可以提供自己的 CSV/JSON/TXT 文件作为训练和评估数据，或者指定一个可在 Hugging Face 数据集 Hub 上找到的公共数据集的名称。如果选择后者，数据集将自动从 Hugging Face 数据集
+    # Hub 下载。 对于 CSV 或 JSON 格式的文件，脚本默认使用名为 'text' 的列作为数据源。如果没有找到名为 'text' 的列，则默认使用文件中的第一列。这个行为可以根据需要进行调整。
+    # 在分布式训练环境中，load_dataset 函数确保同一时间只有一个本地进程下载数据集。这是为了避免在多个进程尝试同时下载同一个数据集时可能发生的冲突或资源浪费。
     if True:
-        data_files = {}
-        dataset_args = {}
+        data_files = {}  # 初始化一个空字典，用于存储数据集文件的路径
+        dataset_args = {}  # 初始化另一个空字典，用于存储加载数据集时的附加参数
+
+        # 检查 data_args.train_files 和 data_args.validation_files 是否非空，如果是，则将它们分别添加到 data_files 字典的 "train" 和
+        # "validation" 键下。
         if data_args.train_files is not None:
             print(data_args.train_files)
             data_files["train"] = data_args.train_files
             print('训练文件总个数', len(data_args.train_files))
         if data_args.validation_files is not None:
             data_files["validation"] = data_args.validation_files
+
+        # 计算文件扩展名，用于后续确定如何加载数据集。如果是文本文件（.txt），则将扩展名改为 "text"。
         extension = (
             data_files["train"][0].split(".")[-1]
             if data_files["train"] is not None
@@ -327,7 +329,7 @@ def main():
             extension = "text"
             dataset_args["keep_linebreaks"] = data_args.keep_linebreaks
 
-        raw_datasets = load_dataset(
+        raw_datasets = load_dataset(  # 根据提供的文件扩展名、文件路径和其他参数来加载数据集
             extension,
             data_files=data_files,
             streaming=data_args.streaming,
@@ -335,9 +337,11 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             **dataset_args,
         )
-        if data_args.streaming:
-            raw_datasets = raw_datasets.shuffle(seed=training_args.seed, buffer_size=1000000)
-        # If no validation data is there, validation_split_percentage will be used to divide the dataset.
+        if data_args.streaming:  # 如果启用了流式模式
+            raw_datasets = raw_datasets.shuffle(seed=training_args.seed, buffer_size=1000000)  # 则对数据集应用随机洗牌
+
+        # 如果没有单独的验证数据集，则将训练数据集分割成两部分：训练集和验证集。
+        # 通过指定分割比例来加载训练和验证数据集
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 extension,
@@ -356,14 +360,10 @@ def main():
                 **dataset_args,
             )
 
-    # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
-
+    # 有关如何加载各种标准或自定义数据集 https://huggingface.co/docs/datasets/index
     # Load pretrained model and tokenizer
     #
-    # Distributed training:
-    # The .from_pretrained methods guarantee that only one local process can concurrently
-    # download model & vocab.
+    # 在分布式训练中，from_pretrained 方法确保在同一时间只有一个本地进程可以并发地下载模型和词汇表。这是为了避免在多个进程尝试同时下载相同资源时可能发生的冲突或重复下载，从而提高效率和稳定性。
 
     config_kwargs = {
         "cache_dir": model_args.cache_dir,
