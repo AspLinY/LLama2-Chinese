@@ -365,94 +365,105 @@ def main():
     #
     # 在分布式训练中，from_pretrained 方法确保在同一时间只有一个本地进程可以并发地下载模型和词汇表。这是为了避免在多个进程尝试同时下载相同资源时可能发生的冲突或重复下载，从而提高效率和稳定性。
 
-    config_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
+    config_kwargs = {  # 存储加载预训练模型配置的关键字参数
+        "cache_dir": model_args.cache_dir,  # 指定了模型配置文件的缓存目录
+        "revision": model_args.model_revision,  # 指定模型的特定版本或修订
+        "use_auth_token": True if model_args.use_auth_token else None,  # 用于访问私有模型或需要认证的资源
     }
-    if model_args.config_name:
-        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
-    elif model_args.model_name_or_path:
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
+    if model_args.config_name:  # 如果提供了 预训练配置的名称或路径
+        config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)  # 则使用这个名称从预训练模型库中加载配置
+    elif model_args.model_name_or_path:  # 如果提供了 config_name
+        config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)  # 则使用这个路径或名称从预训练模型库中加载配置。
     else:
-        config = CONFIG_MAPPING[model_args.model_type]()
+        config = CONFIG_MAPPING[model_args.model_type]()  # 创建一个新的配置实例
         logger.warning("You are instantiating a new config instance from scratch.")
         if model_args.config_overrides is not None:
-            logger.info(f"Overriding config: {model_args.config_overrides}")
-            config.update_from_string(model_args.config_overrides)
+            logger.info(f"Overriding config: {model_args.config_overrides}")  # 检查是否有任何要覆盖的配置设置
+            config.update_from_string(model_args.config_overrides)  # 将指定的配置覆盖到当前配置上
             logger.info(f"New config: {config}")
 
-    print(training_args.local_rank, 'start load tokenizer')
+    # =======================================分词器加载=======================================
+    print(training_args.local_rank, '开始加载分词器')
     tokenizer_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "use_fast": model_args.use_fast_tokenizer,
-        "revision": model_args.model_revision,
-        "use_auth_token": True if model_args.use_auth_token else None,
+        "cache_dir": model_args.cache_dir,  # 指定一个目录来存储下载或缓存的分词器文件
+        "use_fast": model_args.use_fast_tokenizer,  # 指示是否使用快速分词器
+        "revision": model_args.model_revision,  # 用于指定分词器的特定版本或修订。
+        "use_auth_token": True if model_args.use_auth_token else None,  # 指定是否使用认证令牌。
     }
-    if model_args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
-    elif model_args.model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)
+    if model_args.tokenizer_name:  # 检查 model_args 中是否有 tokenizer_name 参数指定。
+        tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)  #
+        # 则使用这个名称从预训练模型库中加载分词器。
+    elif model_args.model_name_or_path:  # 如果提供了 model_name_or_path
+        tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path, **tokenizer_kwargs)  #
+        # 则使用这个路径或名称从预训练模型库中加载分词器
     else:
         raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
+            "脚本不支持从头开始创建新的分词器实例."
+            "可以使用另一个脚本来创建并保存分词器, using --tokenizer_name."
         )
     print(training_args.local_rank, 'end load tokenizer')
+    # ======================================================================================
+
+    # =======================================模型加载========================================
     print(training_args.local_rank, 'start load model')
     if model_args.model_name_or_path:
-        torch_dtype = (
+        torch_dtype = (  # 根据 model_args.torch_dtype 设置 PyTorch 的数据类型
             model_args.torch_dtype
             if model_args.torch_dtype in ["auto", None]
             else getattr(torch, model_args.torch_dtype)
         )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
+        model = AutoModelForCausalLM.from_pretrained(  # 从预训练模型加载因果语言模型
+            model_args.model_name_or_path,  # 指定了模型的名称或路径
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),  # 检查是否需要从 TensorFlow 的检查点（.ckpt 文件）加载模型
+            config=config,  # 传递模型的配置对象
+            cache_dir=model_args.cache_dir,  # 指定缓存目录，用于存储下载的预训练模型文件。
+            revision=model_args.model_revision,  # 指定模型的版本或修订
+            use_auth_token=True if model_args.use_auth_token else None,  # 如果需要，提供认证令牌以访问私有模型或受限资源。
         )
-    else:
-        model = AutoModelForCausalLM.from_config(config)
-        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
+    else:  # 没有提供预训练模型的名称或路径
+        model = AutoModelForCausalLM.from_config(config)  # 根据提供的配置对象 config 初始化一个新的因果语言模型。这意味着模型将从零开始创建，而不是基于预训练的模型。
+        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())  # 计算模型的参数总数。
         logger.info(f"Training new model from scratch - Total size={n_params / 2 ** 20:.2f}M params")
     print(training_args.local_rank, 'end load model')
-    # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-    # on a small vocab and want a smaller embedding size, remove this test.
-    embedding_size = model.get_input_embeddings().weight.shape[0]
-    if len(tokenizer) > embedding_size:
-        model.resize_token_embeddings(len(tokenizer))
-    # Preprocessing the datasets.
-    # First we tokenize all the texts.
-    if training_args.do_train:
-        if data_args.streaming:
-            dataset_head = raw_datasets["train"].take(3)
+    # ======================================================================================
+
+    # 嵌入层的大小仅在必要时被调整，以避免索引错误。这通常发生在使用的词汇量（vocab）大小与预训练模型中的嵌入层大小不匹配时。
+    # 当您使用预训练模型并向其添加新的词汇（例如，特定于领域的术语），这些新词汇不在原始预训练模型的词汇表中时，就需要调整嵌入层的大小。
+    # 调整嵌入层的目的是确保模型能够处理这些新词汇而不会出现索引错误。
+
+    embedding_size = model.get_input_embeddings().weight.shape[0]  # 获取了模型输入嵌入层的大小
+    if len(tokenizer) > embedding_size:  # 检查分词器的词汇量是否大于模型当前的嵌入层大小
+        model.resize_token_embeddings(len(tokenizer))  # 调整模型的嵌入层大小，使其与分词器的词汇量相匹配。
+    # *****************************数据预处理*********************************
+    # 第一步——对文本进行令牌化
+    if training_args.do_train:  # 检查是否设置了进行训练的标志(判断是训练模型还是评估模型)
+        if data_args.streaming:  # 进一步检查数据是否以流式方式提供
+            dataset_head = raw_datasets["train"].take(3)  # 从训练集取出前三条数据作为样本
             print(list(dataset_head))
-            column_names = list(list(dataset_head)[0].keys())
+            column_names = list(list(dataset_head)[0].keys())  # 从这些样本中提取列名
         else:
-            column_names = list(raw_datasets["train"].features)
-    else:
+            column_names = list(raw_datasets["train"].features)  # 直接从训练集的特征中提取列名
+    else:  # 如果未设置训练标志（评估模型）
         if data_args.streaming:
-            dataset_head = raw_datasets["validation"].take(3)
+            dataset_head = raw_datasets["validation"].take(3)  # 同样操作验证集
             column_names = list(list(dataset_head)[0].keys())
         else:
             column_names = list(raw_datasets["validation"].features)
     print(column_names)
-    text_column_name = "text" if "text" in column_names else column_names[0]
+    text_column_name = "text" if "text" in column_names else column_names[0]  # 确定要用于训练或验证的文本列的名称
 
     # since this will be pickled to avoid _LazyModule error in Hasher force logger loading before tokenize_function
     tok_logger = transformers.utils.logging.get_logger("transformers.tokenization_utils_base")
 
     def tokenize_function(examples):
         with CaptureLogger(tok_logger) as cl:
-            output = tokenizer(['<s>' + item + '</s>' for item in examples[text_column_name]])
+            output = tokenizer(['<s>' + item + '</s>' for item in examples[text_column_name]])  #
+            # 对每个文本样本执行令牌化，表示序列的开始和结束
         return output
 
-    with training_args.main_process_first(desc="dataset map tokenization"):
+    with training_args.main_process_first(desc="dataset map tokenization"):  # 确保在分布式训练环境中，主进程首先执行令牌化映射
         if not data_args.streaming:
-            tokenized_datasets = raw_datasets.map(
+            tokenized_datasets = raw_datasets.map(  # 这包括批量处理、多进程处理，以及从缓存加载数据的选项。
                 tokenize_function,
                 batched=True,
                 num_proc=data_args.preprocessing_num_workers,
@@ -468,35 +479,34 @@ def main():
                 batch_size=60000,
             )
 
-    if data_args.block_size is None:
-        block_size = tokenizer.model_max_length
-        if block_size > 1024:
+    # 设置文本处理中使用的“块大小”,即处理文本时每个数据块的最大长度
+    if data_args.block_size is None:  # 如果用户没有指定块大小
+        block_size = tokenizer.model_max_length  # 将块大小设置为分词器支持的最大长度。
+        if block_size > 1024:  # 检查分词器的最大长度是否超过了默认的块大小限制
             logger.warning(
-                "The chosen tokenizer supports a `model_max_length` that is longer than the default `block_size` value"
-                " of 1024. If you would like to use a longer `block_size` up to `tokenizer.model_max_length` you can"
-                " override this default with `--block_size xxx`."
+                "发出警告，表明分词器支持的长度超过默认值，并提醒用户可以通过设置 --block_size 参数来自定义块大小。"
             )
-            block_size = 1024
-    else:
-        if data_args.block_size > tokenizer.model_max_length:
+            block_size = 1024  # 将块大小设置为 1024
+    else:  # 如果用户指定了块大小
+        if data_args.block_size > tokenizer.model_max_length:  # 检查用户指定的块大小是否超过了分词器的最大长度
             logger.warning(
+                # 如果超过了，发出警告，表明用户指定的块大小超出了模型的最大处理长度，并自动使用分词器的最大长度作为块大小。
                 f"The block_size passed ({data_args.block_size}) is larger than the maximum length for the model"
                 f"({tokenizer.model_max_length}). Using block_size={tokenizer.model_max_length}."
             )
-        block_size = min(data_args.block_size, tokenizer.model_max_length)
+        block_size = min(data_args.block_size, tokenizer.model_max_length)  # 最终的块大小是用户指定值和分词器最大长度之间的较小者
 
-    # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
-    def group_texts(examples):
-        # Concatenate all texts.
-        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+    # 数据处理函数，其作用是将数据集中的所有文本拼接起来，并根据指定的块大小（block_size）生成数据块。
+    def group_texts(examples):  # 处理和组织文本数据，以便进行机器学习模型的训练
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}  # 拼接所有文本
         # concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
-        total_length = len(concatenated_examples[list(examples.keys())[0]])
-        # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
-        # customize this part to your needs.
-        if total_length >= block_size:
-            total_length = (total_length // block_size) * block_size
-        # Split by chunks of max_len.
-        result = {
+        total_length = len(concatenated_examples[list(examples.keys())[0]])  # 计算拼接后的文本总长度。
+
+        # 如何处理长度不一致的数据,在将文本数据切分成等长的块后，可能会剩下一小部分数据,可视情况选择丢弃或者填充
+
+        if total_length >= block_size:  # 如果总长度>=块大小
+            total_length = (total_length // block_size) * block_size  # 调整总长度为块大小的整数倍，这是为了确保所有数据块的长度一致
+        result = {  # 这部分代码将拼接后的长文本切分成多个小块，每个块的长度为 block_size。
             k: [t[i: i + block_size] for i in range(0, total_length, block_size)]
             for k, t in concatenated_examples.items()
         }
@@ -513,15 +523,16 @@ def main():
     # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
     # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
 
-    with training_args.main_process_first(desc="grouping texts together"):
-        if not data_args.streaming:
-            lm_datasets = tokenized_datasets.map(
+    # 进行文本数据的最终处理和准备工作
+    with training_args.main_process_first(desc="grouping texts together"):  # 确保在分布式训练环境中，主进程（main process）首先执行数据处理任务
+        if not data_args.streaming:  # 如果数据不是以流式方式提供的
+            lm_datasets = tokenized_datasets.map(  # 将文本数据分组和组织成指定大小的块
                 group_texts,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc=f"Grouping texts in chunks of {block_size}",
-                batch_size=40000,
+                batched=True,  # 表示数据会批量处理
+                num_proc=data_args.preprocessing_num_workers,  # 设置使用多少个进程来并行处理数据，这有助于加快数据处理速度
+                load_from_cache_file=not data_args.overwrite_cache,  # 控制是否从缓存中加载数据。
+                desc=f"Grouping texts in chunks of {block_size}",  # 提供了描述信息，说明正在进行的操作。
+                batch_size=40000,  # 设置每批处理的数据量
             )
         else:
             lm_datasets = tokenized_datasets.map(
@@ -529,97 +540,102 @@ def main():
                 batched=True,
                 batch_size=60000,
             )
-    print(training_args.local_rank, 'start select train_dataset')
-    if training_args.do_train:
-        if "train" not in tokenized_datasets:
+
+    print(training_args.local_rank, '开始选择用于训练的数据集')
+    if training_args.do_train:  # 检查是否设置了训练标志
+        if "train" not in tokenized_datasets:  # 检查 tokenized_datasets 中是否包含名为 "train" 的数据集
             raise ValueError("--do_train requires a train dataset")
         train_dataset = lm_datasets["train"]
-        if data_args.max_train_samples is not None and data_args.streaming == False:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-            train_dataset = train_dataset.select(range(max_train_samples))
+        if data_args.max_train_samples is not None and data_args.streaming == False:  # 如果设置了最大训练样本数且数据不是以流式方式提供的
+            max_train_samples = min(len(train_dataset), data_args.max_train_samples)  # 计算实际使用的训练样本数，不超过用户设定的最大值
+            train_dataset = train_dataset.select(range(max_train_samples))  # 从训练数据集中选择指定数量的样本
     print(training_args.local_rank, 'end select train_dataset')
 
-    if training_args.do_eval:
-        if "validation" not in tokenized_datasets:
+    if training_args.do_eval:  # 检查是否设置了评估标志
+        if "validation" not in tokenized_datasets:  # 检查处理后的数据集 (tokenized_datasets) 中是否包含名为 "validation" 的部分
             raise ValueError("--do_eval requires a validation dataset")
-        print(training_args.local_rank, 'start select eval_dataset')
-        eval_dataset = lm_datasets["validation"]
-        if data_args.max_eval_samples is not None and data_args.streaming == False:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+        print(training_args.local_rank, '选择和准备用于评估（evaluation）的数据集')
+        eval_dataset = lm_datasets["validation"]  # 从处理过的数据集 (lm_datasets) 中选择名为 "validation" 的部分作为评估数据集
+        if data_args.max_eval_samples is not None and data_args.streaming == False:  # 检查是否设置了最大评估样本数，且数据不是以流式方式提供的
+            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)  # 计算实际使用的评估样本数，不超过用户设定的最大值
+            eval_dataset = eval_dataset.select(range(max_eval_samples))  # 从评估数据集中选择指定数量的样本
         print(training_args.local_rank, 'end select eval_dataset')
 
-        def preprocess_logits_for_metrics(logits, labels):
+        def preprocess_logits_for_metrics(logits, labels):  # 处理模型产生的逻辑输出（通常称为 logits），以便于后续的性能评估。
             if isinstance(logits, tuple):
-                # Depending on the model and config, logits may contain extra tensors,
-                # like past_key_values, but logits always come first
+                # 模型的输出（logits）可能不仅包含了预测值，还可能包含其他额外的张量（tensors）
                 logits = logits[0]
             return logits.argmax(dim=-1)
 
-        print(training_args.local_rank, 'start load metric')
+        print(training_args.local_rank, '开始加载 metric（用于评估模型性能的度量标准）')
         metric = evaluate.load("accuracy.py")
         print(training_args.local_rank, 'end load metric')
 
-        def compute_metrics(eval_preds):
+        def compute_metrics(eval_preds):  # 用于计算模型在评估过程中的性能指标。
             preds, labels = eval_preds
             # preds have the same shape as the labels, after the argmax(-1) has been calculated
-            # by preprocess_logits_for_metrics but we need to shift the labels
+            # by preprocess_logits_for_metrics, but we need to shift the labels
             labels = labels[:, 1:].reshape(-1)
             preds = preds[:, :-1].reshape(-1)
             return metric.compute(predictions=preds, references=labels)
 
-    print(training_args.local_rank, 'Initialize our Trainer')
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=IterableWrapper(train_dataset) if training_args.do_train else None,
-        eval_dataset=IterableWrapper(eval_dataset) if training_args.do_eval else None,
-        tokenizer=tokenizer,
+    print(training_args.local_rank, '开始初始化 Trainer')
+    trainer = Trainer(  # 创建一个 Trainer 实例
+        model=model,  # 指定要训练或评估的模型。
+        args=training_args,  # 提供训练相关的参数
+        train_dataset=IterableWrapper(train_dataset) if training_args.do_train else None,  # 如果设置了训练标志，将训练数据集包装成可迭代对象
+        eval_dataset=IterableWrapper(eval_dataset) if training_args.do_eval else None,  # 如果设置了评估标志，将评估数据集包装成可迭代对象
+        tokenizer=tokenizer,  # 指定用于文本处理的分词器
         # Data collator will default to DataCollatorWithPadding, so we change it.
-        data_collator=default_data_collator,
-        compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+        data_collator=default_data_collator,  # 设置数据整理器，用于将多个数据样本整理成一个批次。
+        compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,  #
+        # 如果设置了评估标志且不使用 TPU，指定计算性能指标的函数。
+
         preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
+        # 如果设置了评估标志且不使用 TPU，指定预处理 logits 的函数。
+
         # callbacks=([SavePeftModelCallback] if isinstance(model, PeftModel) else None),
     )
 
-    if training_args.do_train:
-        checkpoint = None
-        if training_args.resume_from_checkpoint is not None:
-            checkpoint = training_args.resume_from_checkpoint
-        elif last_checkpoint is not None:
-            checkpoint = last_checkpoint
+    if training_args.do_train:  # 确保只有在设置了训练标志时才执行训练过程
+        checkpoint = None  # 默认设置检查点为 None
+        if training_args.resume_from_checkpoint is not None:  # 如果有指定从某个检查点恢复训练
+            checkpoint = training_args.resume_from_checkpoint  # 则更新检查点变量
+        elif last_checkpoint is not None:  # 如果没有指定检查点，但存在最后一个检查点
+            checkpoint = last_checkpoint  # 则从最后一个检查点恢复训练
 
-        print(training_args.local_rank, 'start train')
-        train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        trainer.save_model()  # Saves the tokenizer too for easy upload
+        print(training_args.local_rank, '开始训练')
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)  # 开始训练过程。如果指定了检查点，训练将从该检查点恢复
+        trainer.save_model()  # 训练完成后，保存模型
 
-        metrics = train_result.metrics
+        metrics = train_result.metrics  # 获取训练过程中收集的指标
 
-        max_train_samples = (
+        max_train_samples = (  # 计算实际使用的最大训练样本数量
             data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
         )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        metrics["train_samples"] = min(max_train_samples, len(train_dataset))  # 更新训练指标，加入实际使用的训练样本数
 
-        trainer.log_metrics("train", metrics)
-        trainer.save_metrics("train", metrics)
-        trainer.save_state()
+        trainer.log_metrics("train", metrics)  # 记录训练指标
+        trainer.save_metrics("train", metrics)  # 保存训练指标
+        trainer.save_state()  # 保存训练器的状态，包括优化器和调度器的状态
 
-    # Evaluation
-    if training_args.do_eval:
+    # 进行模型评估
+    if training_args.do_eval:  # 确保只有在设置了评估标志时才执行评估过程
         logger.info("*** Evaluate ***")
 
-        metrics = trainer.evaluate()
+        metrics = trainer.evaluate()  # 开始评估过程，并收集评估指标
 
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(
+            eval_dataset)  # 计算实际使用的最大评估样本数量
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))  # 在评估指标中加入实际使用的评估样本数
         try:
-            perplexity = math.exp(metrics["eval_loss"])
+            perplexity = math.exp(metrics["eval_loss"])  # 尝试计算困惑度，它是评估损失（eval_loss）的指数
         except OverflowError:
-            perplexity = float("inf")
-        metrics["perplexity"] = perplexity
+            perplexity = float("inf")  # 如果计算中出现溢出错误（通常是因为损失太大），则将困惑度设置为无穷大
+        metrics["perplexity"] = perplexity  # 将计算出的困惑度添加到评估指标中
 
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
+        trainer.log_metrics("eval", metrics)  # 记录评估指标
+        trainer.save_metrics("eval", metrics)  # 保存评估指标
 
 
 def _mp_fn(index):
